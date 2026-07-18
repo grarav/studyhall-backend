@@ -1,26 +1,45 @@
 const express = require("express");
 const multer = require("multer");
+const crypto = require("crypto");
 const path = require("path");
-const fs = require("fs");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 
 const router = express.Router();
 
-const uploadDir = path.join(__dirname, "..", "..", "uploads");
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+// Multer keeps the file in memory briefly, then we stream it straight to R2 —
+// nothing touches local disk, so nothing gets lost on redeploy.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 
-const storage = multer.diskStorage({
-  destination: uploadDir,
-  filename: (req, file, cb) => cb(null, `${Date.now()}_${Math.random().toString(36).slice(2)}${path.extname(file.originalname)}`),
+const s3 = new S3Client({
+  region: "auto",
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
 });
-const upload = multer({ storage, limits: { fileSize: 8 * 1024 * 1024 } });
 
-// NOTE: this stores files on local disk, which is fine for development but
-// NOT for production (files vanish on redeploy). Swap this handler for an
-// S3 / Cloudflare R2 upload (e.g. using @aws-sdk/client-s3) before going live —
-// the rest of the app only cares that this returns a stable URL.
-router.post("/", upload.single("file"), (req, res) => {
+router.post("/", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  res.json({ url: `/uploads/${req.file.filename}` });
+
+  if (!process.env.R2_ACCOUNT_ID || !process.env.R2_BUCKET_NAME || !process.env.R2_PUBLIC_URL) {
+    return res.status(500).json({ error: "File storage isn't configured yet (missing R2 environment variables)" });
+  }
+
+  try {
+    const key = `${Date.now()}_${crypto.randomBytes(6).toString("hex")}${path.extname(req.file.originalname)}`;
+    await s3.send(new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: key,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype,
+    }));
+    const url = `${process.env.R2_PUBLIC_URL.replace(/\/$/, "")}/${key}`;
+    res.json({ url });
+  } catch (e) {
+    console.error("R2 upload failed:", e);
+    res.status(500).json({ error: "Upload failed" });
+  }
 });
 
 module.exports = router;
