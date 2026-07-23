@@ -72,6 +72,27 @@ router.post("/login", async (req, res) => {
     const token = signToken({ type: "student", id: student.id, hallId: student.hall_id, seatNumber: student.seat_number });
     return res.json({ token, status: "active", student: { name: student.name, hallSlug: student.hall_slug, hallName: student.hall_name, seatNumber: student.seat_number } });
   }
+  // Reset password using mobile + Aadhar number as identity verification
+router.post("/forgot-password", async (req, res) => {
+  const { mobile, aadhar, newPassword } = req.body;
+  if (!mobile || !aadhar || !newPassword) {
+    return res.status(400).json({ error: "Mobile number, Aadhar number, and a new password are all required" });
+  }
+  if (newPassword.length < 4) {
+    return res.status(400).json({ error: "Password must be at least 4 characters" });
+  }
+  const result = await pool.query(
+    "SELECT id FROM students WHERE mobile = $1 AND aadhar_number = $2",
+    [mobile, aadhar]
+  );
+  const student = result.rows[0];
+  if (!student) {
+    return res.status(404).json({ error: "No account found matching that mobile number and Aadhar number" });
+  }
+  const passwordHash = await hashPassword(newPassword);
+  await pool.query("UPDATE students SET password_hash = $1 WHERE id = $2", [passwordHash, student.id]);
+  res.json({ ok: true });
+});
   // Not an active student — check pending applications
   const appRes = await pool.query(
     `SELECT sa.*, h.slug AS hall_slug, h.name AS hall_name FROM signup_applications sa JOIN halls h ON h.id = sa.hall_id WHERE sa.mobile = $1 AND sa.status = 'pending'`,
