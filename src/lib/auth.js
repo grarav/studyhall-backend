@@ -47,6 +47,9 @@ function requireStudent(req, res, next) {
 const PASSWORD_RULES = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 function isStrongPassword(pw) {
   return PASSWORD_RULES.test(pw || "");
+  function isValidStudentPassword(pw) {
+  return typeof pw === "string" && pw.length >= 4;
+}
 }
 
-module.exports = { hashPassword, verifyPassword, signToken, verifyToken, requireAdmin, requireMaster, requireStudent, isStrongPassword };
+module.exports = { hashPassword, verifyPassword, signToken, verifyToken, requireAdmin, requireMaster, requireStudent, isValidStudentPassword, isStrongPassword };
