@@ -1,5 +1,6 @@
 const express = require("express");
 const { pool } = require("../lib/db");
+isValidStudentPassword
 const { hashPassword, verifyPassword, signToken, requireStudent, isStrongPassword } = require("../lib/auth");
 const { proratedFirstMonthFee, daysUntilNextMonthStart, ADVANCE_REFUND, SEAT_CHANGE_FEE } = require("../lib/fees");
 
@@ -30,8 +31,8 @@ router.post("/signup", async (req, res) => {
   if (!name || !dob || !gender || !/^\d{10}$/.test(mobile || "") || !/^\d{12}$/.test(aadhar || "") || !photoUrl || !aadharPhotoUrl) {
     return res.status(400).json({ error: "All fields are required, including both photos" });
   }
-  if (!isStrongPassword(password)) {
-    return res.status(400).json({ error: "Password must be 8+ chars with uppercase, lowercase, a number, and a special character" });
+ if (!isValidStudentPassword(password)) {
+    return res.status(400).json({ error: "Password must be at least 4 characters" });
   }
   const hallRes = await pool.query("SELECT * FROM halls WHERE slug=$1", [hallSlug]);
   const hall = hallRes.rows[0];
